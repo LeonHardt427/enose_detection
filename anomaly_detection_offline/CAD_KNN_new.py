@@ -10,62 +10,74 @@ import pandas as pd
 from sklearn.neighbors import NearestNeighbors
 
 
-def k_neighourdis(x_test, train, k=3):
+def k_neighourdis(train, x_test, k=3):
     """
-    :param x_test: numpy
-    :param train: numpy
+    :param x_test: array (1,)
+    :param train: array(:,:)
     :param k: int
-    :return alp: []
+    :return alp: float
     """
     neigh = NearestNeighbors(n_neighbors=k, p=2)
     neigh.fit(train)
     distance, index = neigh.kneighbors(x_test)
     # print(distance)
-    dis = distance.sum(axis=1)
+    dis = distance.sum(axis=1)[0]
     return dis
 
 
-def cad_knn_new(x_test, y_test, x_train, y_train, n_nei=3):
+def cad_knn_new(x_train, y_train, x_test, poss_labels, k_nei=1):
     """
     计算p_value（Alpha包含其中）
-    :param x_test: array(1, )
-    :param y_test: array
-    :param x_train: array
-    :param y_train: array
-    :param k: int
-    :return: array( ,1)
+    :param x_test: array(:, :)
+    :param poss_labels: []
+    :param x_train: array(:, :)
+    :param y_train: array(:,:)
+    :param k_nei: int
+    :return: array((x_test.shape[0], len(poss_labels))
     """
-    result = []
-    p_value = []
-    for y_index, y_label in enumerate(y_test):
-        nei_sample = []   # same label train samples
+    p_value = np.zeros((x_test.shape[0], len(poss_labels)))
+    for num, x_sample in enumerate(x_test):    # count sample one by one
 
-        for index, label in enumerate(y_train):
-            if label == y_label:
-                nei_sample.append(x_train[index, :])
+        test_pvalue = np.zeros(len(poss_labels))
 
-        test_alphs = k_neighourdis(x_test, nei_sample, k=n_nei)    # all test samples alpha
-        test_alph_temp = np.ones(test_alphs.shape)
+        for y_index, y_label in enumerate(poss_labels):   # extract same label train samples
+            same_samples = []
+            flag = 0            # same_samples the first line
+            for index, label in enumerate(y_train):
+                if label == y_label:
+                    if flag == 0:
+                        same_samples = x_train[index, :]
+                        flag = 1
+                    else:
+                        same_samples = np.vstack((same_samples, x_train[index, :]))
+                        flag = 2
 
-        for train_sample in nei_sample:
-            train_alph_sample = k_neighourdis([train_sample], nei_sample, k=n_nei)
-            for index, test_alph in enumerate(test_alphs):
-                if train_alph_sample >= test_alph:
-                    test_alph_temp[index] += 1
-    # count p_value for one label
-        for num, alpha in enumerate(test_alph_temp):
-            if num == 0:
-                p_value_temp = [alpha / (np.shape(nei_sample)[0])]
-            else:
-                p_value_temp.append((alpha / (np.shape(nei_sample)[0])))
+            sample_whole = same_samples             # prepare for count train alpha
+            if flag == 1 :
+                test_alph = k_neighourdis(np.array([same_samples]), np.array([x_sample]), k=k_nei)    # a_test
+            elif flag == 2:
+                test_alph = k_neighourdis(np.array(same_samples), np.array([x_sample]), k=k_nei)  # a_test
+            train_alph = []
+            sample_whole = np.vstack((sample_whole, x_sample))
 
-    # summary p_value
-        if y_index == 0:
-            p_value = np.array(p_value_temp).T
-        else:
-            p_value = np.hstack((p_value, np.array(p_value_temp).T))
+            if flag == 1:
+                same_samples = np.array([same_samples])
 
-    return result
+            for same_sample in same_samples:            # count all a_train
+                train_alph_temp = k_neighourdis(sample_whole, np.array([same_sample]), k=k_nei+1)
+                train_alph.append(train_alph_temp)
+
+            test_pvalue_sample = 1
+            for n, alpha in enumerate(train_alph):
+                if alpha >= test_alph:
+                    test_pvalue_sample += 1
+            test_pvalue_sample = (test_pvalue_sample / sample_whole.shape[0])
+
+            test_pvalue[y_index] = test_pvalue_sample
+
+        p_value[num, :] = test_pvalue
+
+    return p_value
 
 
 if __name__ == '__main__':
@@ -82,5 +94,6 @@ if __name__ == '__main__':
     # b = np.array([[0, 0.5, 0.5]])
     b_test = [0, 1]
 
-    result = cad_knn_new(b, b_test, a, a_y, n_nei=1)
+    result = cad_knn_new(x_train=a, y_train=a_y, x_test=b, poss_labels=b_test, k_nei=1)
+    # result = k_neighourdis(a, b, k=1)
     print(result)
